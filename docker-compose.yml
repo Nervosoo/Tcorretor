@@ -1,0 +1,23 @@
+services:
+  languagetool:
+    build:
+      context: .
+      dockerfile: docker/languagetool/Dockerfile
+    ports:
+      - "8010:8010"
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    environment:
+      API_PORT: 3001
+      API_KEY: dev-token
+      LT_BASE_URL: http://languagetool:8010
+      LT_TIMEOUT_MS: 5000
+      MAX_TEXT_LENGTH: 4000
+      CORS_ORIGIN: "*"
+    ports:
+      - "3001:3001"
+    depends_on:
+      - languagetool

@@ -1,0 +1,146 @@
+.corretor-anchor-highlight {
+  box-shadow: none !important;
+}
+
+.corretor-badge {
+  position: fixed;
+  z-index: 2147483647;
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  width: 14px;
+  height: 14px;
+  min-width: 14px;
+  min-height: 14px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: #8b1e2d;
+  color: #fff;
+  font-size: 0;
+  line-height: 0;
+  cursor: pointer;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.22);
+  border: 2px solid #fff;
+}
+
+.corretor-marker-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483646;
+  pointer-events: none;
+}
+
+.corretor-marker {
+  position: fixed;
+  display: block;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-bottom: 2px solid rgba(220, 38, 38, 0.95);
+  background: rgba(220, 38, 38, 0.04);
+  box-sizing: border-box;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.corretor-marker:hover,
+.corretor-marker.is-selected {
+  background: rgba(220, 38, 38, 0.1);
+  border-bottom-color: rgba(185, 28, 28, 1);
+}
+
+.corretor-badge[data-tone="info"] {
+  background: #1d4ed8;
+}
+
+.corretor-badge[data-tone="success"] {
+  background: #047857;
+}
+
+.corretor-badge[data-tone="warning"] {
+  background: #8b1e2d;
+}
+
+.corretor-badge[data-tone="error"] {
+  background: #b91c1c;
+}
+
+.corretor-panel {
+  position: fixed;
+  z-index: 2147483647;
+  width: min(320px, calc(100vw - 24px));
+  padding: 12px;
+  border-radius: 14px;
+  background: #fff;
+  color: #0f172a;
+  box-shadow: 0 18px 48px rgba(15, 23, 42, 0.22);
+  font: 14px/1.45 Arial, sans-serif;
+}
+
+.corretor-panel[hidden],
+.corretor-badge[hidden] {
+  display: none;
+}
+
+.corretor-panel-header {
+  margin: 0 0 10px;
+  font: 700 14px/1.2 Arial, sans-serif;
+}
+
+.corretor-context {
+  margin: 0 0 8px;
+  color: #8b1e2d;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.corretor-message {
+  margin: 0 0 8px;
+  color: #0f172a;
+}
+
+.corretor-panel-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 320px;
+  overflow: auto;
+}
+
+.corretor-match {
+  padding: 10px;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.corretor-match-title {
+  margin: 0 0 6px;
+  font-weight: 700;
+}
+
+.corretor-match-meta {
+  margin: 0 0 8px;
+  color: #475569;
+  font-size: 12px;
+}
+
+.corretor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.corretor-action {
+  padding: 6px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  background: #fff;
+  cursor: pointer;
+  font: 600 12px/1.2 Arial, sans-serif;
+}
+
+.corretor-empty {
+  color: #64748b;
+  font-size: 13px;
+}

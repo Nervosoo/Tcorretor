@@ -1,0 +1,21 @@
+{
+  "name": "corretor-ptbr",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/api",
+    "apps/extension"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "build:api": "npm --workspace @corretor/api run build",
+    "build:extension": "npm --workspace @corretor/extension run build",
+    "test": "npm run test --workspaces --if-present",
+    "start": "npm --workspace @corretor/api run start",
+    "dev:api": "npm --workspace @corretor/api run dev",
+    "dev:extension": "npm --workspace @corretor/extension run dev"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}
