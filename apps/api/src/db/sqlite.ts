@@ -1,71 +1,95 @@
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { DatabaseSync } from "node:sqlite";
 import { env } from "../config/env.js";
+
+type CustomerRow = {
+  id: number;
+  email: string;
+  stripe_customer_id: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type SubscriptionRow = {
+  id: number;
+  customer_id: number;
+  stripe_subscription_id: string;
+  stripe_checkout_session_id: string | null;
+  price_id: string | null;
+  status: string;
+  current_period_end: string | null;
+  cancel_at_period_end: number;
+  plan: string;
+  max_text_length: number;
+  created_at: string;
+  updated_at: string;
+};
+
+type LicenseRow = {
+  id: number;
+  customer_id: number;
+  subscription_id: number;
+  token: string;
+  status: string;
+  plan: string;
+  max_text_length: number;
+  commercial_use: number;
+  delivery_email: string | null;
+  delivery_sent_at: string | null;
+  created_at: string;
+  updated_at: string;
+  last_validated_at: string | null;
+};
+
+export type BillingStore = {
+  customers: CustomerRow[];
+  subscriptions: SubscriptionRow[];
+  licenses: LicenseRow[];
+};
 
 const databasePath = resolve(process.cwd(), env.dbPath);
 mkdirSync(dirname(databasePath), { recursive: true });
 
-const database = new DatabaseSync(databasePath);
+const defaultStore = (): BillingStore => ({
+  customers: [],
+  subscriptions: [],
+  licenses: []
+});
 
-database.exec(`
-  CREATE TABLE IF NOT EXISTS customers (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    email TEXT NOT NULL,
-    stripe_customer_id TEXT UNIQUE,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-  );
-
-  CREATE TABLE IF NOT EXISTS subscriptions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    customer_id INTEGER NOT NULL,
-    stripe_subscription_id TEXT NOT NULL UNIQUE,
-    stripe_checkout_session_id TEXT UNIQUE,
-    price_id TEXT,
-    status TEXT NOT NULL,
-    current_period_end TEXT,
-    cancel_at_period_end INTEGER NOT NULL DEFAULT 0,
-    plan TEXT NOT NULL,
-    max_text_length INTEGER NOT NULL,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
-    FOREIGN KEY(customer_id) REFERENCES customers(id)
-  );
-
-  CREATE TABLE IF NOT EXISTS licenses (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    customer_id INTEGER NOT NULL,
-    subscription_id INTEGER NOT NULL UNIQUE,
-    token TEXT NOT NULL UNIQUE,
-    status TEXT NOT NULL,
-    plan TEXT NOT NULL,
-    max_text_length INTEGER NOT NULL,
-    commercial_use INTEGER NOT NULL DEFAULT 1,
-    delivery_email TEXT,
-    delivery_sent_at TEXT,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
-    last_validated_at TEXT,
-    FOREIGN KEY(customer_id) REFERENCES customers(id),
-    FOREIGN KEY(subscription_id) REFERENCES subscriptions(id)
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_customers_stripe_customer_id ON customers(stripe_customer_id);
-  CREATE INDEX IF NOT EXISTS idx_subscriptions_checkout_session_id ON subscriptions(stripe_checkout_session_id);
-  CREATE INDEX IF NOT EXISTS idx_licenses_token ON licenses(token);
-`);
-
-const ensureColumnExists = (tableName: string, columnName: string, definition: string) => {
-  const columns = database.prepare(`PRAGMA table_info(${tableName})`).all() as Array<{ name: string }>;
-  if (columns.some((column) => column.name === columnName)) {
+const ensureStoreFile = () => {
+  if (existsSync(databasePath)) {
     return;
   }
 
-  database.exec(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`);
+  writeFileSync(databasePath, JSON.stringify(defaultStore(), null, 2), "utf8");
 };
 
-ensureColumnExists("licenses", "delivery_email", "TEXT");
-ensureColumnExists("licenses", "delivery_sent_at", "TEXT");
+export const readStore = (): BillingStore => {
+  ensureStoreFile();
 
-export const sqlite = database;
+  try {
+    const raw = readFileSync(databasePath, "utf8");
+    const parsed = JSON.parse(raw) as Partial<BillingStore>;
+
+    return {
+      customers: parsed.customers ?? [],
+      subscriptions: parsed.subscriptions ?? [],
+      licenses: parsed.licenses ?? []
+    };
+  } catch {
+    const fallback = defaultStore();
+    writeStore(fallback);
+    return fallback;
+  }
+};
+
+export const writeStore = (store: BillingStore) => {
+  ensureStoreFile();
+  const tempPath = `${databasePath}.tmp`;
+  writeFileSync(tempPath, JSON.stringify(store, null, 2), "utf8");
+  renameSync(tempPath, databasePath);
+};
+
+export const nextId = (rows: Array<{ id: number }>) => {
+  return rows.reduce((max, row) => Math.max(max, row.id), 0) + 1;
+};

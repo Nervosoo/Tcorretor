@@ -22,7 +22,7 @@ Monorepo com uma extensao Chrome MV3 e uma API privada para correcao de texto em
 - `API_PORT`: porta local alternativa da API, padrao `3001`
 - `API_KEY`: token usado pela extensao
 - `LICENSE_CATALOG`: JSON com tokens de licenca e planos para uso comercial
-- `DB_PATH`: caminho do banco SQLite local
+- `DB_PATH`: caminho do arquivo persistente local da API
 - `LT_BASE_URL`: URL base do LanguageTool, padrao `http://localhost:8010`
 - `LT_TIMEOUT_MS`: timeout das chamadas ao LanguageTool, padrao `5000`
 - `MAX_TEXT_LENGTH`: tamanho maximo aceito pela API, padrao `4000`

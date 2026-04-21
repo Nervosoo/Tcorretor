@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { sqlite } from "../db/sqlite.js";
+import { nextId, readStore, writeStore } from "../db/sqlite.js";
 import type { LicenseAccount } from "../types.js";
 
 type CustomerRecord = {
@@ -62,64 +62,57 @@ const generateLicenseToken = () => {
 const activeLicenseStatuses = new Set(["active", "trialing", "past_due"]);
 
 export const upsertCustomer = (input: UpsertCustomerInput) => {
-  const existing = sqlite.prepare(`SELECT id, email, stripe_customer_id FROM customers WHERE stripe_customer_id = ?`).get(input.stripeCustomerId) as CustomerRecord | undefined;
+  const store = readStore();
+  const existing = store.customers.find((customer) => customer.stripe_customer_id === input.stripeCustomerId);
 
   if (existing) {
-    sqlite.prepare(`UPDATE customers SET email = ?, updated_at = ? WHERE id = ?`).run(input.email, now(), existing.id);
+    existing.email = input.email;
+    existing.updated_at = now();
+    writeStore(store);
     return { ...existing, email: input.email };
   }
 
   const timestamp = now();
-  const result = sqlite.prepare(`
-    INSERT INTO customers (email, stripe_customer_id, created_at, updated_at)
-    VALUES (?, ?, ?, ?)
-  `).run(input.email, input.stripeCustomerId, timestamp, timestamp);
+  const created = {
+    id: nextId(store.customers),
+    email: input.email,
+    stripe_customer_id: input.stripeCustomerId,
+    created_at: timestamp,
+    updated_at: timestamp
+  };
+
+  store.customers.push(created);
+  writeStore(store);
 
   return {
-    id: Number(result.lastInsertRowid),
+    id: created.id,
     email: input.email,
     stripe_customer_id: input.stripeCustomerId
   } satisfies CustomerRecord;
 };
 
 export const findCustomerByStripeCustomerId = (stripeCustomerId: string) => {
-  return sqlite.prepare(`SELECT id, email, stripe_customer_id FROM customers WHERE stripe_customer_id = ?`).get(stripeCustomerId) as CustomerRecord | undefined;
+  const store = readStore();
+  return store.customers.find((customer) => customer.stripe_customer_id === stripeCustomerId);
 };
 
 export const upsertSubscription = (input: UpsertSubscriptionInput) => {
-  const existing = sqlite.prepare(`
-    SELECT id, customer_id, stripe_subscription_id, stripe_checkout_session_id, price_id, status, current_period_end, cancel_at_period_end, plan, max_text_length
-    FROM subscriptions
-    WHERE stripe_subscription_id = ?
-  `).get(input.stripeSubscriptionId) as SubscriptionRecord | undefined;
+  const store = readStore();
+  const existing = store.subscriptions.find((subscription) => subscription.stripe_subscription_id === input.stripeSubscriptionId);
 
   const timestamp = now();
 
   if (existing) {
-    sqlite.prepare(`
-      UPDATE subscriptions
-      SET customer_id = ?,
-          stripe_checkout_session_id = COALESCE(?, stripe_checkout_session_id),
-          price_id = COALESCE(?, price_id),
-          status = ?,
-          current_period_end = ?,
-          cancel_at_period_end = ?,
-          plan = ?,
-          max_text_length = ?,
-          updated_at = ?
-      WHERE id = ?
-    `).run(
-      input.customerId,
-      input.stripeCheckoutSessionId ?? null,
-      input.priceId ?? null,
-      input.status,
-      input.currentPeriodEnd ?? null,
-      input.cancelAtPeriodEnd ? 1 : 0,
-      input.plan,
-      input.maxTextLength,
-      timestamp,
-      existing.id
-    );
+    existing.customer_id = input.customerId;
+    existing.stripe_checkout_session_id = input.stripeCheckoutSessionId ?? existing.stripe_checkout_session_id;
+    existing.price_id = input.priceId ?? existing.price_id;
+    existing.status = input.status;
+    existing.current_period_end = input.currentPeriodEnd ?? null;
+    existing.cancel_at_period_end = input.cancelAtPeriodEnd ? 1 : 0;
+    existing.plan = input.plan;
+    existing.max_text_length = input.maxTextLength;
+    existing.updated_at = timestamp;
+    writeStore(store);
 
     return {
       ...existing,
@@ -134,36 +127,26 @@ export const upsertSubscription = (input: UpsertSubscriptionInput) => {
     } satisfies SubscriptionRecord;
   }
 
-  const result = sqlite.prepare(`
-    INSERT INTO subscriptions (
-      customer_id,
-      stripe_subscription_id,
-      stripe_checkout_session_id,
-      price_id,
-      status,
-      current_period_end,
-      cancel_at_period_end,
-      plan,
-      max_text_length,
-      created_at,
-      updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    input.customerId,
-    input.stripeSubscriptionId,
-    input.stripeCheckoutSessionId ?? null,
-    input.priceId ?? null,
-    input.status,
-    input.currentPeriodEnd ?? null,
-    input.cancelAtPeriodEnd ? 1 : 0,
-    input.plan,
-    input.maxTextLength,
-    timestamp,
-    timestamp
-  );
+  const created = {
+    id: nextId(store.subscriptions),
+    customer_id: input.customerId,
+    stripe_subscription_id: input.stripeSubscriptionId,
+    stripe_checkout_session_id: input.stripeCheckoutSessionId ?? null,
+    price_id: input.priceId ?? null,
+    status: input.status,
+    current_period_end: input.currentPeriodEnd ?? null,
+    cancel_at_period_end: input.cancelAtPeriodEnd ? 1 : 0,
+    plan: input.plan,
+    max_text_length: input.maxTextLength,
+    created_at: timestamp,
+    updated_at: timestamp
+  };
+
+  store.subscriptions.push(created);
+  writeStore(store);
 
   return {
-    id: Number(result.lastInsertRowid),
+    id: created.id,
     customer_id: input.customerId,
     stripe_subscription_id: input.stripeSubscriptionId,
     stripe_checkout_session_id: input.stripeCheckoutSessionId ?? null,
@@ -177,127 +160,116 @@ export const upsertSubscription = (input: UpsertSubscriptionInput) => {
 };
 
 export const ensureLicenseForSubscription = (subscription: SubscriptionRecord, customer: CustomerRecord) => {
-  const existing = sqlite.prepare(`SELECT token FROM licenses WHERE subscription_id = ?`).get(subscription.id) as { token: string } | undefined;
+  const store = readStore();
+  const existing = store.licenses.find((license) => license.subscription_id === subscription.id);
   const nextStatus = activeLicenseStatuses.has(subscription.status) ? "active" : "inactive";
   const timestamp = now();
 
   if (existing) {
-    sqlite.prepare(`
-      UPDATE licenses
-      SET status = ?, plan = ?, max_text_length = ?, updated_at = ?
-      WHERE subscription_id = ?
-    `).run(nextStatus, subscription.plan, subscription.max_text_length, timestamp, subscription.id);
+    existing.status = nextStatus;
+    existing.plan = subscription.plan;
+    existing.max_text_length = subscription.max_text_length;
+    existing.updated_at = timestamp;
+    writeStore(store);
     return existing.token;
   }
 
   const token = generateLicenseToken();
-  sqlite.prepare(`
-    INSERT INTO licenses (
-      customer_id,
-      subscription_id,
-      token,
-      status,
-      plan,
-      max_text_length,
-      commercial_use,
-      created_at,
-      updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    customer.id,
-    subscription.id,
+  store.licenses.push({
+    id: nextId(store.licenses),
+    customer_id: customer.id,
+    subscription_id: subscription.id,
     token,
-    nextStatus,
-    subscription.plan,
-    subscription.max_text_length,
-    1,
-    timestamp,
-    timestamp
-  );
+    status: nextStatus,
+    plan: subscription.plan,
+    max_text_length: subscription.max_text_length,
+    commercial_use: 1,
+    delivery_email: null,
+    delivery_sent_at: null,
+    created_at: timestamp,
+    updated_at: timestamp,
+    last_validated_at: null
+  });
+  writeStore(store);
 
   return token;
 };
 
 export const getLicenseForSubscription = (subscriptionId: number) => {
-  return sqlite.prepare(`
-    SELECT token, plan, delivery_email, delivery_sent_at
-    FROM licenses
-    WHERE subscription_id = ?
-    LIMIT 1
-  `).get(subscriptionId) as LicenseForSubscriptionRecord | undefined;
+  const store = readStore();
+  const license = store.licenses.find((item) => item.subscription_id === subscriptionId);
+  if (!license) {
+    return undefined;
+  }
+
+  return {
+    token: license.token,
+    plan: license.plan,
+    delivery_email: license.delivery_email,
+    delivery_sent_at: license.delivery_sent_at
+  } satisfies LicenseForSubscriptionRecord;
 };
 
 export const markLicenseDelivered = (subscriptionId: number, email: string) => {
+  const store = readStore();
+  const license = store.licenses.find((item) => item.subscription_id === subscriptionId);
+  if (!license) {
+    return;
+  }
+
   const timestamp = now();
-  sqlite.prepare(`
-    UPDATE licenses
-    SET delivery_email = ?, delivery_sent_at = ?, updated_at = ?
-    WHERE subscription_id = ?
-  `).run(email, timestamp, timestamp, subscriptionId);
+  license.delivery_email = email;
+  license.delivery_sent_at = timestamp;
+  license.updated_at = timestamp;
+  writeStore(store);
 };
 
 export const findLicenseAccountByToken = (token: string): LicenseAccount | null => {
-  const row = sqlite.prepare(`
-    SELECT licenses.token,
-           customers.email AS name,
-           licenses.plan,
-           licenses.max_text_length,
-           licenses.commercial_use
-    FROM licenses
-    INNER JOIN customers ON customers.id = licenses.customer_id
-    WHERE licenses.token = ?
-      AND licenses.status = 'active'
-    LIMIT 1
-  `).get(token) as LicenseRecord | undefined;
+  const store = readStore();
+  const license = store.licenses.find((item) => item.token === token && item.status === "active");
 
-  if (!row) {
+  if (!license) {
     return null;
   }
 
-  sqlite.prepare(`UPDATE licenses SET last_validated_at = ?, updated_at = ? WHERE token = ?`).run(now(), now(), token);
+  const customer = store.customers.find((item) => item.id === license.customer_id);
+  if (!customer) {
+    return null;
+  }
+
+  license.last_validated_at = now();
+  license.updated_at = now();
+  writeStore(store);
 
   return {
-    token: row.token,
-    name: row.name,
-    plan: row.plan,
-    maxTextLength: row.max_text_length,
-    commercialUse: Boolean(row.commercial_use)
+    token: license.token,
+    name: customer.email,
+    plan: license.plan,
+    maxTextLength: license.max_text_length,
+    commercialUse: Boolean(license.commercial_use)
   };
 };
 
 export const findCheckoutSessionStatus = (sessionId: string) => {
-  const row = sqlite.prepare(`
-    SELECT subscriptions.status,
-           licenses.token,
-           licenses.plan,
-           licenses.delivery_sent_at,
-           customers.email AS customer_email
-    FROM subscriptions
-    INNER JOIN customers ON customers.id = subscriptions.customer_id
-    LEFT JOIN licenses ON licenses.subscription_id = subscriptions.id
-    WHERE subscriptions.stripe_checkout_session_id = ?
-    LIMIT 1
-  `).get(sessionId) as {
-    status: string;
-    token: string | null;
-    plan: string | null;
-    delivery_sent_at: string | null;
-    customer_email: string | null;
-  } | undefined;
+  const store = readStore();
+  const subscription = store.subscriptions.find((item) => item.stripe_checkout_session_id === sessionId);
 
-  if (!row) {
+  if (!subscription) {
     return { status: "processing" as const };
   }
 
-  if (!row.token) {
+  const license = store.licenses.find((item) => item.subscription_id === subscription.id);
+  if (!license?.token) {
     return { status: "processing" as const };
   }
+
+  const customer = store.customers.find((item) => item.id === subscription.customer_id);
 
   return {
     status: "ready" as const,
-    token: row.token,
-    plan: row.plan ?? "pro",
-    customerEmail: row.customer_email ?? "",
-    emailSent: Boolean(row.delivery_sent_at)
+    token: license.token,
+    plan: license.plan ?? "pro",
+    customerEmail: customer?.email ?? "",
+    emailSent: Boolean(license.delivery_sent_at)
   };
 };

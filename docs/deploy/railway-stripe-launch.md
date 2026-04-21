@@ -12,6 +12,7 @@ O projeto ja inclui:
 - health check em `/health`
 
 Anexe um volume persistente e use um caminho como `/data/corretor.sqlite` em `DB_PATH`.
+Apesar do nome do arquivo, a API agora usa esse caminho como armazenamento persistente local compatível com Railway.
 
 ## 2. Variaveis da API
 
