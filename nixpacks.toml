@@ -1,0 +1,12 @@
+[variables]
+NIXPACKS_NODE_VERSION = "22"
+
+[phases.install]
+cmds = ["npm ci"]
+
+[phases.build]
+cmds = ["npm run build:api"]
+cacheDirectories = []
+
+[start]
+cmd = "npm start"
